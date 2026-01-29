@@ -1,0 +1,14 @@
+{
+  "203": {
+    "id": "203",
+    "nombre": "botella de agua",
+    "precio": 1.99,
+    "stock": 39
+  },
+  "10000": {
+    "id": "10000",
+    "nombre": "llet nostra",
+    "precio": 2.99,
+    "stock": 500
+  }
+}

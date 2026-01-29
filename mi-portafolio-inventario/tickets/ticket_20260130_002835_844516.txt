@@ -1,0 +1,11 @@
+==============================
+     TICKET DE COMPRA
+==============================
+ID Producto : 203
+Nombre      : botella de agua
+Cantidad    : 1
+Precio Unit : 1.99
+------------------------------
+TOTAL       : 1.99
+==============================
+Gracias por su compra.
