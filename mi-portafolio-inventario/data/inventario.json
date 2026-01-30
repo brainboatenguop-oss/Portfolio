@@ -10,5 +10,11 @@
     "nombre": "llet nostra",
     "precio": 2.99,
     "stock": 500
+  },
+  "0211": {
+    "id": "0211",
+    "nombre": "coca cola",
+    "precio": 1.25,
+    "stock": 500
   }
 }
