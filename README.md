@@ -1,6 +1,6 @@
-﻿# Sistema de Gestion de Inventario Modular (Python)
+﻿# Sistema de Gestion de Inventario Modular (Python + Java)
 
-Proyecto de portafolio orientado a reclutadores que demuestra disenio modular, POO y buenas practicas de desarrollo en Python. El sistema permite administrar productos, ajustar stock (compra/venta) y generar tickets de compra, con persistencia en JSON.
+Proyecto de portafolio orientado a reclutadores que demuestra disenio modular, POO y buenas practicas de desarrollo. Incluye un sistema de inventario en Python con persistencia en JSON y un auditor de stock en Java que consulta SQLite y genera reportes.
 
 ## Arquitectura (Multicapa)
 
@@ -8,7 +8,7 @@ El proyecto separa responsabilidades en tres capas para mantener el codigo limpi
 
 - `main.py` (Presentacion / UI): Orquesta el flujo, muestra el menu interactivo y valida entradas.
 - `logic.py` (Dominio): Define la logica de negocio con POO (clases `Producto` e `InventarioManager`).
-- `data_manager.py` (Persistencia): Carga y guarda datos en JSON con manejo de excepciones.
+- `data_manager.py` (Persistencia): Carga/guarda datos en JSON y utilidades de almacenamiento. Incluye `DatabaseManager` para SQLite y alertas de stock.
 
 Esta separacion permite modificar la interfaz o la persistencia sin afectar el nucleo del sistema.
 
@@ -16,16 +16,21 @@ Esta separacion permite modificar la interfaz o la persistencia sin afectar el n
 
 ```
 Portfolio/
-└── mi-portafolio-inventario/
-    ├── data/
-    │   └── inventario.json
-    ├── tickets/
-    │   └── ticket_YYYYMMDD_HHMMSS_micro.txt
-    ├── src/
-    │   ├── main.py
-    │   ├── logic.py
-    │   └── data_manager.py
-    └── README.md
+├── mi-portafolio-inventario/
+│   ├── data/
+│   │   ├── inventario.json
+│   │   └── inventario.db
+│   ├── tickets/
+│   │   └── ticket_YYYYMMDD_HHMMSS_micro.txt
+│   ├── src/
+│   │   ├── main.py
+│   │   ├── logic.py
+│   │   └── data_manager.py
+│   └── README.md
+├── logs/
+│   └── auditoria_stock.txt
+└── src/
+    └── StockAuditor.java
 ```
 
 ## Logica tecnica
@@ -33,15 +38,17 @@ Portfolio/
 ### Programacion Orientada a Objetos (POO)
 - **Producto**: entidad principal con `id`, `nombre`, `precio` y `stock`.
 - **InventarioManager**: gestiona un diccionario de productos, encapsula validaciones y operaciones clave (anadir, actualizar stock, listado, recibos).
+- **DatabaseManager**: capa SQLite para alertas de stock con consultas parametrizadas y manejo de errores.
 
-### Persistencia en JSON
-- Los datos se guardan en `data/inventario.json`.
-- La capa de persistencia maneja errores (`FileNotFoundError`, `JSONDecodeError`) para evitar fallos al iniciar.
+### Persistencia
+- **JSON**: `mi-portafolio-inventario/data/inventario.json` para datos del sistema Python.
+- **SQLite**: `mi-portafolio-inventario/data/inventario.db` para auditoria en Java.
 
 ### Manejo de excepciones y validaciones
 - Se valida que precio y stock no sean negativos.
 - Se evita vender mas unidades de las disponibles.
 - Entradas del usuario protegidas con `try/except`.
+- Acceso SQLite protegido con `sqlite3.Error` y consultas parametrizadas.
 
 ## Funcionalidades destacadas
 
@@ -49,14 +56,16 @@ Portfolio/
 - Ajuste de stock (compra/venta).
 - Generacion de tickets con timestamp y guardado automatico en `tickets/`.
 - Persistencia y recuperacion de inventario en JSON.
+- Auditoria de stock en Java con log persistente en `logs/auditoria_stock.txt`.
 
 ## Stack tecnologico
 
 - **Python 3.x**
-- **JSON** para persistencia ligera
-- **Clean Code** y principios de separacion de responsabilidades
+- **Java 17+** (para el auditor)
+- **SQLite** y **JSON** para persistencia
+- **Clean Code** y separacion de responsabilidades
 
-## Guia de instalacion
+## Guia de instalacion (Python)
 
 ### 1) Clonar el repositorio
 
@@ -79,11 +88,36 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3) Ejecutar la aplicacion
+### 3) Ejecutar la aplicacion Python
 
 ```
 cd .\mi-portafolio-inventario
 python .\src\main.py
+```
+
+## Auditor de Stock (Java)
+
+El archivo `src/StockAuditor.java` genera un reporte con productos cuyo stock es menor o igual al umbral indicado.
+
+### Dependencias
+Se requiere el driver JDBC de SQLite y SLF4J (solo para runtime):
+
+- `sqlite-jdbc.jar`
+- `slf4j-api.jar`
+- `slf4j-nop.jar`
+
+### Compilar y ejecutar
+Desde la raiz del repo:
+
+```
+javac -cp .;sqlite-jdbc.jar src\StockAuditor.java
+java -cp ".;sqlite-jdbc.jar;slf4j-api.jar;slf4j-nop.jar;src" StockAuditor
+```
+
+Para definir un umbral custom:
+
+```
+java -cp ".;sqlite-jdbc.jar;slf4j-api.jar;slf4j-nop.jar;src" StockAuditor 3
 ```
 
 ## Impacto para reclutadores
@@ -97,4 +131,4 @@ Este proyecto demuestra capacidad para:
 
 ---
 
-Si deseas extenderlo (reportes, filtros avanzados, integracion con SQLite o API REST), el codigo esta preparado para crecer sin reescrituras agresivas.
+Si deseas extenderlo (reportes, filtros avanzados, integracion con API REST o UI grafica), el codigo esta preparado para crecer sin reescrituras agresivas.
