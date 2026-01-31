@@ -1,8 +1,9 @@
 ﻿import json
+import sqlite3
 from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
 
 DATA_FILE = "inventario.json"
 
@@ -85,3 +86,61 @@ def guardar_ticket(contenido_ticket: str, base_dir: Path | None = None) -> Path:
     except OSError:
         pass
     return ticket_path
+
+
+class DatabaseManager:
+    """Manage SQLite persistence for inventory data."""
+
+    def __init__(self, db_path: str | Path) -> None:
+        """Initialize the database connection and ensure tables exist.
+
+        Args:
+            db_path: Path to the SQLite database file.
+        """
+        self.db_path = Path(db_path)
+        self.conn = sqlite3.connect(self.db_path)
+        self._create_tables()
+
+    def _create_tables(self) -> None:
+        """Create base tables if they do not exist."""
+        create_table_sql = (
+            "CREATE TABLE IF NOT EXISTS productos ("
+            "id INTEGER PRIMARY KEY, "
+            "nombre TEXT NOT NULL, "
+            "precio REAL NOT NULL, "
+            "stock INTEGER NOT NULL"
+            ");"
+        )
+        try:
+            with self.conn:
+                self.conn.execute(create_table_sql)
+        except sqlite3.Error:
+            pass
+
+    def obtener_alertas_stock(self, umbral: int) -> List[Tuple[Any, ...]]:
+        """Return products with stock less than or equal to the threshold.
+
+        Args:
+            umbral: Stock threshold for alerts.
+
+        Returns:
+            List of tuples with product records.
+        """
+        query = "SELECT id, nombre, precio, stock FROM productos WHERE stock <= ?"
+        try:
+            with self.conn:
+                cursor = self.conn.cursor()
+                try:
+                    cursor.execute(query, (umbral,))
+                    return cursor.fetchall()
+                finally:
+                    cursor.close()
+        except sqlite3.Error:
+            return []
+
+    def close(self) -> None:
+        """Close the database connection."""
+        try:
+            self.conn.close()
+        except sqlite3.Error:
+            pass

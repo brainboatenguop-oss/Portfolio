@@ -9,6 +9,18 @@ env/
 .venv/
 venv/
 
+# Java
+*.class
+
+# Logs
+logs/
+
+# Database
+*.db
+
+# Jars (dependencies)
+*.jar
+
 # OS
 .DS_Store
 Thumbs.db
