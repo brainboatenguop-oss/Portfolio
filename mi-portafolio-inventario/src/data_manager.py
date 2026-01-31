@@ -3,7 +3,7 @@ import sqlite3
 from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Literal, Tuple
 
 DATA_FILE = "inventario.json"
 
@@ -98,7 +98,7 @@ class DatabaseManager:
             db_path: Path to the SQLite database file.
         """
         self.db_path = Path(db_path)
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._create_tables()
 
     def _create_tables(self) -> None:
@@ -137,6 +137,60 @@ class DatabaseManager:
                     cursor.close()
         except sqlite3.Error:
             return []
+
+    def obtener_productos(self) -> List[Tuple[Any, ...]]:
+        """Return all products from the database.
+
+        Returns:
+            List of tuples with product records.
+        """
+        query = "SELECT id, nombre, precio, stock FROM productos"
+        try:
+            with self.conn:
+                cursor = self.conn.cursor()
+                try:
+                    cursor.execute(query)
+                    return cursor.fetchall()
+                finally:
+                    cursor.close()
+        except sqlite3.Error:
+            return []
+
+    def registrar_venta_transaccional(self, producto_id: int, cantidad: int) -> Literal[
+        "ok", "not_found", "insufficient", "invalid", "error"
+    ]:
+        """Register a sale and update stock atomically.
+
+        Args:
+            producto_id: Product ID.
+            cantidad: Units sold.
+
+        Returns:
+            Status string describing the result.
+        """
+        if cantidad <= 0:
+            return "invalid"
+
+        select_sql = "SELECT stock FROM productos WHERE id = ?"
+        update_sql = "UPDATE productos SET stock = ? WHERE id = ?"
+        try:
+            with self.conn:
+                cursor = self.conn.cursor()
+                try:
+                    cursor.execute(select_sql, (producto_id,))
+                    row = cursor.fetchone()
+                    if row is None:
+                        return "not_found"
+                    stock = int(row[0])
+                    if stock < cantidad:
+                        return "insufficient"
+                    nuevo_stock = stock - cantidad
+                    cursor.execute(update_sql, (nuevo_stock, producto_id))
+                    return "ok"
+                finally:
+                    cursor.close()
+        except sqlite3.Error:
+            return "error"
 
     def close(self) -> None:
         """Close the database connection."""
