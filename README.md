@@ -1,6 +1,6 @@
 ﻿# Sistema de Gestion de Inventario Modular (Python + Java)
 
-Proyecto de portafolio orientado a reclutadores que demuestra disenio modular, POO y buenas practicas de desarrollo. Incluye un sistema de inventario en Python con persistencia en JSON y un auditor de stock en Java que consulta SQLite y genera reportes.
+Proyecto de portafolio orientado a reclutadores que demuestra disenio modular, POO y buenas practicas de desarrollo. Incluye un sistema de inventario en Python con persistencia en JSON/SQLite, un auditor de stock en Java y un asistente IA local con Ollama para automatizar operaciones comunes.
 
 ## Arquitectura (Multicapa)
 
@@ -23,9 +23,11 @@ Portfolio/
 │   ├── tickets/
 │   │   └── ticket_YYYYMMDD_HHMMSS_micro.txt
 │   ├── src/
+│   │   ├── api.py
 │   │   ├── main.py
 │   │   ├── logic.py
 │   │   └── data_manager.py
+│   ├── run_api.py
 │   └── README.md
 ├── logs/
 │   └── auditoria_stock.txt
@@ -38,11 +40,11 @@ Portfolio/
 ### Programacion Orientada a Objetos (POO)
 - **Producto**: entidad principal con `id`, `nombre`, `precio` y `stock`.
 - **InventarioManager**: gestiona un diccionario de productos, encapsula validaciones y operaciones clave (anadir, actualizar stock, listado, recibos).
-- **DatabaseManager**: capa SQLite para alertas de stock con consultas parametrizadas y manejo de errores.
+- **DatabaseManager**: capa SQLite para alertas de stock, CRUD y consultas parametrizadas.
 
 ### Persistencia
 - **JSON**: `mi-portafolio-inventario/data/inventario.json` para datos del sistema Python.
-- **SQLite**: `mi-portafolio-inventario/data/inventario.db` para auditoria en Java.
+- **SQLite**: `mi-portafolio-inventario/data/inventario.db` para API, auditoria y operaciones transaccionales.
 
 ### Manejo de excepciones y validaciones
 - Se valida que precio y stock no sean negativos.
@@ -52,17 +54,20 @@ Portfolio/
 
 ## Funcionalidades destacadas
 
-- Alta de productos con validaciones.
+- Alta, baja y listado de productos.
 - Ajuste de stock (compra/venta).
 - Generacion de tickets con timestamp y guardado automatico en `tickets/`.
-- Persistencia y recuperacion de inventario en JSON.
+- Persistencia y recuperacion de inventario en JSON/SQLite.
 - Auditoria de stock en Java con log persistente en `logs/auditoria_stock.txt`.
+- **Asistente IA con Ollama** para ejecutar acciones simples (agregar/eliminar) desde lenguaje natural.
 
 ## Stack tecnologico
 
 - **Python 3.x**
 - **Java 17+** (para el auditor)
 - **SQLite** y **JSON** para persistencia
+- **FastAPI + Uvicorn** para la API
+- **Ollama (llama3)** como asistente local
 - **Clean Code** y separacion de responsabilidades
 
 ## Guia de instalacion (Python)
@@ -88,12 +93,35 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3) Ejecutar la aplicacion Python
+### 3) Instalar dependencias
 
 ```
-cd .\mi-portafolio-inventario
-python .\src\main.py
+pip install fastapi uvicorn
 ```
+
+### 4) Ejecutar la API (panel unificado)
+
+```
+C:\Users\brain\OneDrive\Documentos\Portfolio\env\Scripts\python C:\Users\brain\OneDrive\Documentos\Portfolio\mi-portafolio-inventario\run_api.py
+```
+
+Panel y docs:
+- `http://127.0.0.1:8000/`
+- `http://127.0.0.1:8000/docs`
+
+## Asistente IA (Ollama)
+
+1) Asegura que Ollama este activo:
+```
+ollama serve
+```
+2) Descarga el modelo:
+```
+ollama pull llama3
+```
+3) En el panel, usa instrucciones como:
+- "Añade fanta y aquarius a 1.99"
+- "Elimina fanta"
 
 ## Auditor de Stock (Java)
 
@@ -114,12 +142,6 @@ javac -cp .;sqlite-jdbc.jar src\StockAuditor.java
 java -cp ".;sqlite-jdbc.jar;slf4j-api.jar;slf4j-nop.jar;src" StockAuditor
 ```
 
-Para definir un umbral custom:
-
-```
-java -cp ".;sqlite-jdbc.jar;slf4j-api.jar;slf4j-nop.jar;src" StockAuditor 3
-```
-
 ## Impacto para reclutadores
 
 Este proyecto demuestra capacidad para:
@@ -127,7 +149,7 @@ Este proyecto demuestra capacidad para:
 - Disenar arquitectura modular y escalable.
 - Aplicar POO con entidades claras y cohesionadas.
 - Mantener persistencia y robustez ante errores comunes.
-- Construir una base solida para futuras extensiones (UI grafica, base de datos, APIs).
+- Construir una base solida para futuras extensiones (UI grafica, base de datos, APIs, IA local).
 
 ---
 

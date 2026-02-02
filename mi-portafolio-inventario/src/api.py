@@ -1,6 +1,9 @@
 ﻿from pathlib import Path
 import sys
-from typing import List
+from typing import List, Optional
+import json
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
@@ -38,6 +41,20 @@ class ProductoCreateRequest(BaseModel):
     stock: int = Field(..., ge=0, description="Stock inicial")
 
 
+class AIRequest(BaseModel):
+    """Schema for AI requests."""
+
+    pregunta: str = Field(..., min_length=1, description="Pregunta para la IA")
+
+
+class AIResponse(BaseModel):
+    """Schema for AI responses."""
+
+    respuesta: str
+    accion: Optional[str] = None
+    resultados: Optional[List[str]] = None
+
+
 base_dir = Path(__file__).resolve().parents[1]
 db_path = base_dir / "data" / "inventario.db"
 json_path = base_dir / "data" / "inventario.json"
@@ -66,6 +83,89 @@ def shutdown() -> None:
     db.close()
 
 
+def _build_inventory_context(limit: int = 50) -> str:
+    """Build a short inventory context for AI prompts."""
+    rows = db.obtener_productos()
+    rows = rows[:limit]
+    if not rows:
+        return "Inventario vacio."
+    lines = ["Inventario (id, nombre, precio, stock):"]
+    for row in rows:
+        lines.append(f"- {row[0]} | {row[1]} | {row[2]:.2f} | {row[3]}")
+    return "\n".join(lines)
+
+
+def _ask_ollama(prompt: str, model: str = "llama3") -> str:
+    """Send a prompt to Ollama and return the response."""
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+    }
+    data = json.dumps(payload).encode("utf-8")
+    req = Request(
+        "http://127.0.0.1:11434/api/generate",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8")
+            parsed = json.loads(raw)
+            return str(parsed.get("response", "")).strip()
+    except (HTTPError, URLError, json.JSONDecodeError):
+        return "No se pudo contactar con Ollama. Verifica que este ejecutandose."
+
+
+def _parse_ai_action(text: str) -> Optional[dict]:
+    """Parse a JSON action object from AI response."""
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    if "action" not in data or "payload" not in data:
+        return None
+    return data
+
+
+def _execute_ai_action(action_obj: dict) -> List[str]:
+    """Execute AI action against the database and return result messages."""
+    action = str(action_obj.get("action", "")).upper()
+    payload = action_obj.get("payload", {})
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    results: List[str] = []
+
+    if action == "ADD_PRODUCT":
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            nombre = str(item.get("name", "")).strip()
+            precio = float(item.get("price", 0) or 0)
+            stock = int(item.get("stock", 0) or 0)
+            nuevo_id = db.obtener_siguiente_id()
+            estado = db.insertar_producto(nuevo_id, nombre, precio, stock)
+            results.append(f"ADD {nombre}: {estado}")
+        return results
+
+    if action == "DELETE_PRODUCT":
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if "id" in item and str(item.get("id")).isdigit():
+                estado = db.eliminar_producto(int(item.get("id")))
+                results.append(f"DEL {item.get('id')}: {estado}")
+            else:
+                nombre = str(item.get("name", "")).strip()
+                estado = db.eliminar_producto_por_nombre(nombre)
+                results.append(f"DEL {nombre}: {estado}")
+        return results
+
+    return ["Accion no soportada"]
+
+
 @app.get(
     "/",
     summary="Panel unificado",
@@ -89,13 +189,15 @@ def root() -> HTMLResponse:
         table { width:100%; border-collapse: collapse; }
         th, td { padding:8px; border-bottom:1px solid #e5e7eb; text-align:left; }
         .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
-        input { padding:8px; border:1px solid #d1d5db; border-radius:6px; }
+        input, textarea { padding:8px; border:1px solid #d1d5db; border-radius:6px; }
+        textarea { width:100%; min-height:90px; }
         button { padding:8px 12px; border:none; border-radius:6px; background:#2563eb; color:#fff; cursor:pointer; }
         button:disabled { background:#93c5fd; cursor:not-allowed; }
         .muted { color:#6b7280; font-size: 12px; }
         .badge { display:inline-block; padding:2px 8px; border-radius:999px; background:#fee2e2; color:#991b1b; font-size:12px; }
         .ok { background:#dcfce7; color:#166534; }
         .msg { margin-top:8px; }
+        .ai-box { background:#f8fafc; border:1px solid #e2e8f0; padding:12px; border-radius:8px; }
       </style>
     </head>
     <body>
@@ -152,6 +254,16 @@ def root() -> HTMLResponse:
           <button onclick="registrarVenta()">Vender</button>
         </div>
         <div id="venta-msg" class="muted msg"></div>
+      </section>
+
+      <section>
+        <h2>Asistente IA (Ollama)</h2>
+        <div class="ai-box">
+          <div class="muted">Ejemplos: "Añade Fanta y Aquarius a 1.99" o "Elimina Coca Cola".</div>
+          <textarea id="ai-pregunta" placeholder="Escribe tu pedido..."></textarea>
+          <button onclick="preguntarIA()">Procesar con IA</button>
+          <div id="ai-respuesta" class="msg"></div>
+        </div>
       </section>
 
       <section>
@@ -249,6 +361,29 @@ def root() -> HTMLResponse:
           if (!res.ok) {
             alert(data.detail || 'Error al eliminar');
             return;
+          }
+          await cargarProductos();
+          await cargarAlertas();
+        }
+
+        async function preguntarIA() {
+          const pregunta = document.getElementById('ai-pregunta').value;
+          const box = document.getElementById('ai-respuesta');
+          box.textContent = 'Pensando...';
+          const res = await fetch('/ai/consulta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pregunta })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            box.textContent = data.detail || 'Error al consultar IA';
+            return;
+          }
+          if (data.resultados && data.resultados.length) {
+            box.textContent = data.resultados.join(' | ');
+          } else {
+            box.textContent = data.respuesta || 'Sin respuesta';
           }
           await cargarProductos();
           await cargarAlertas();
@@ -396,3 +531,42 @@ def post_venta(payload: VentaRequest) -> dict:
         raise HTTPException(status_code=500, detail="No se pudo registrar la venta.")
 
     return {"status": "ok", "message": "Venta registrada correctamente."}
+
+
+@app.post(
+    "/ai/consulta",
+    response_model=AIResponse,
+    summary="Consulta IA",
+    description="Consulta el inventario usando Ollama (modelo llama3).",
+)
+def ai_consulta(payload: AIRequest) -> AIResponse:
+    """Process an AI query using Ollama."""
+    try:
+        contexto = _build_inventory_context()
+        system_prompt = (
+            "Eres un asistente de inventario. "
+            "Si el usuario pide agregar o eliminar productos, responde SOLO con un JSON "
+            "con este formato: {\"action\": \"ADD_PRODUCT|DELETE_PRODUCT\", "
+            "\"payload\": {\"items\": [{\"name\": \"...\", \"price\": 0.0, \"stock\": 0}]}}. "
+            "Si no hay accion, responde texto breve."
+        )
+        prompt = (
+            f"{system_prompt}\n\n{contexto}\n\n"
+            f"Pregunta: {payload.pregunta}\n"
+            "Respuesta:"
+        )
+        respuesta = _ask_ollama(prompt)
+        action_obj = _parse_ai_action(respuesta)
+        if action_obj:
+            resultados = _execute_ai_action(action_obj)
+            return AIResponse(
+                respuesta="Accion ejecutada.",
+                accion=str(action_obj.get("action")),
+                resultados=resultados,
+            )
+        return AIResponse(respuesta=respuesta)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Error interno al consultar la IA.",
+        ) from exc

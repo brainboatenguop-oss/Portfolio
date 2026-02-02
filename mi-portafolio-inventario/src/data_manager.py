@@ -156,6 +156,26 @@ class DatabaseManager:
         except sqlite3.Error:
             return []
 
+    def obtener_siguiente_id(self) -> int:
+        """Return the next available product ID.
+
+        Returns:
+            Next integer ID starting from 1.
+        """
+        query = "SELECT MAX(id) FROM productos"
+        try:
+            with self.conn:
+                cursor = self.conn.cursor()
+                try:
+                    cursor.execute(query)
+                    row = cursor.fetchone()
+                    max_id = int(row[0]) if row and row[0] is not None else 0
+                    return max_id + 1
+                finally:
+                    cursor.close()
+        except sqlite3.Error:
+            return 1
+
     def registrar_venta_transaccional(self, producto_id: int, cantidad: int) -> Literal[
         "ok", "not_found", "insufficient", "invalid", "error"
     ]:
@@ -243,6 +263,31 @@ class DatabaseManager:
                 cursor = self.conn.cursor()
                 try:
                     cursor.execute(delete_sql, (producto_id,))
+                    if cursor.rowcount == 0:
+                        return "not_found"
+                    return "ok"
+                finally:
+                    cursor.close()
+        except sqlite3.Error:
+            return "error"
+
+    def eliminar_producto_por_nombre(self, nombre: str) -> Literal["ok", "not_found", "error"]:
+        """Delete a product by name.
+
+        Args:
+            nombre: Product name.
+
+        Returns:
+            Status string describing the result.
+        """
+        if not nombre:
+            return "not_found"
+        delete_sql = "DELETE FROM productos WHERE LOWER(nombre) = LOWER(?)"
+        try:
+            with self.conn:
+                cursor = self.conn.cursor()
+                try:
+                    cursor.execute(delete_sql, (nombre,))
                     if cursor.rowcount == 0:
                         return "not_found"
                     return "ok"
